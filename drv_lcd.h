@@ -6,6 +6,12 @@
 #include <drv_gpio.h>
 #include "dev_lcd.h"
 
+#define LCD_BASIC_FUNCTIONS 0x00
+#define LCD_ADVANCED_FUNCTIONS 0x01
+#define LCD_FUNCTIONS_TEST 0x02
+#define LCD_WIDTH 320
+#define LCD_HEIGHT 480
+
 #if defined BSP_USING_LCD_DEFAULT_TOUCH
 #define MOSI_PIN	GET_PIN(F,9)
 #define MISO_PIN	GET_PIN(B,2)
@@ -62,7 +68,7 @@
 #define LCD_FSMC_BTRX        FSMC_Bank1->BTCR[(LCD_FSMC_NEX - 1) * 2 + 1]   /* BTR寄存器,根据LCD_FSMC_NEX自动计算 */
 #define LCD_FSMC_BWTRX       FSMC_Bank1E->BWTR[(LCD_FSMC_NEX - 1) * 2]      /* BWTR寄存器,根据LCD_FSMC_NEX自动计算 */
 
-struct stm32_lcd_device
+struct lcd_device
 {
 	rt_uint16_t width;
 	rt_uint16_t height;
@@ -145,62 +151,32 @@ typedef struct
 #define LIGHTBLUE       0X7D7C      /* 浅蓝色 */ 
 #define GRAYBLUE        0X5458      /* 灰蓝色 */ 
 #define LIGHTGREEN      0X841F      /* 浅绿色 */  
-#define LGRAY           0XC618      /* 浅灰色(PANNEL),窗体背景色 */ 
-#define LGRAYBLUE       0XA651      /* 浅灰蓝色(中间层颜色) */ 
-#define LBBLUE          0X2B12      /* 浅棕蓝色(选择条目的反色) */ 
-
-/******************************************************************************************/
-/* SSD1963相关配置参数(一般不用改) */
-
-/* LCD分辨率设置 */ 
-#define SSD_HOR_RESOLUTION      320     /* LCD水平分辨率 */ 
-#define SSD_VER_RESOLUTION      480     /* LCD垂直分辨率 */ 
-
-/* LCD驱动参数设置 */ 
-#define SSD_HOR_PULSE_WIDTH     1       /* 水平脉宽 */ 
-#define SSD_HOR_BACK_PORCH      46      /* 水平前廊 */ 
-#define SSD_HOR_FRONT_PORCH     210     /* 水平后廊 */ 
-
-#define SSD_VER_PULSE_WIDTH     1       /* 垂直脉宽 */ 
-#define SSD_VER_BACK_PORCH      23      /* 垂直前廊 */ 
-#define SSD_VER_FRONT_PORCH     22      /* 垂直前廊 */ 
-
-/* 如下几个参数，自动计算 */ 
-#define SSD_HT          (SSD_HOR_RESOLUTION + SSD_HOR_BACK_PORCH + SSD_HOR_FRONT_PORCH)
-#define SSD_HPS         (SSD_HOR_BACK_PORCH)
-#define SSD_VT          (SSD_VER_RESOLUTION + SSD_VER_BACK_PORCH + SSD_VER_FRONT_PORCH)
-#define SSD_VPS         (SSD_VER_BACK_PORCH)
-#endif
-
-
-/* functions declaration */
-void lcd_wr_data(volatile uint16_t data);            /* LCD写数据 */
-void lcd_wr_regno(volatile uint16_t regno);          /* LCD写寄存器编号/地址 */
-void lcd_write_reg(uint16_t regno, uint16_t data);   /* LCD写寄存器的值 */
 
 /* functions need to be inplemented! */
-void lcd_control(int cmd, void *args);
-void lcd_open(void);
+//void lcd_control(int cmd, void *args);
+//void lcd_open(void);
 void lcd_init(void);
-void lcd_close(void);
+//void lcd_close(void);
+/* lcd system functions! */
+void lcd_backlight_set(rt_uint8_t pwm);
+void lcd_clear(rt_uint16_t color);
+void lcd_scan_dir(rt_uint8_t dir);
+void lcd_display_on(void);
+void lcd_display_off(void);
+void lcd_set_window(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t length, rt_uint16_t width);
 
-#if defined LCD_BASIC_FUNCTIONS	
+#ifdef LCD_BASIC_FUNCTIONS	
 	void lcd_draw_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t color);
 	void lcd_read_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t *color);
 	void lcd_draw_line(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t x_end,rt_uint16_t y_end,rt_uint16_t color);
 	void lcd_show_num(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color);
+	void lcd_show_xnum(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color);
 	void lcd_show_char(rt_uint16_t x_pos,rt_uint16_t y_pos,char ch,rt_uint16_t color);
 	void lcd_show_string(rt_uint16_t x_pos,rt_uint16_t y_pos,const char* str,rt_uint16_t color);
 #endif
 	
-#if defined LCD_ALL_FUNCTIONS
-	void lcd_display_on(void);
-	void lcd_display_off(void);
-	void lcd_scan_dir(rt_uint8_t dir);
+#ifdef LCD_ADVANCED_FUNCTIONS
 	void lcd_color_fill(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t length, rt_uint16_t width,rt_uint16_t color);
-	void lcd_backlight_set(rt_uint8_t pwm);
-	void lcd_clear(rt_uint16_t color);
-	void lcd_set_window(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t length, rt_uint16_t width);
 	void lcd_draw_ver_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color);
 	void lcd_draw_hor_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color);
 	void lcd_draw_rect(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t length, rt_uint16_t width,rt_uint16_t color);
@@ -208,3 +184,4 @@ void lcd_close(void);
 #endif
 
 
+#endif
