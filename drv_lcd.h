@@ -12,14 +12,13 @@
 * 		1.LCD set up table 
 * 		2.LCD pin definition
 *		3.LCD transplant functions
-*		4.LCD device struct and hw init
-*		5.MX_FSMC_Init	(if not default set up)
-*		6.drv_lcd_font_ic.h (change IC init function)
+*		4.LCD hw and FSMC init(ignore FSMC if use default set up)
+*		5.drv_lcd_font_ic.h (change IC init function)
 *	The parts need to be modified are easy to find as you can see,
 *	among which 1,3,4,6 are closed related to LCD drive IC
 *  	The set up of FSMC is finished in STM32cubeMX
 *  	but you must move it to drv_lcd.c if you don't use default set up!!!
-*  	STM32 HAL library is used here but not much, remember stm32fxxx_hal_sram.c and stm32fxxx_ll_fsmc.c files
+*  	STM32 HAL library is used here but not much, remember add stm32fxxx_hal_sram.c and stm32fxxx_ll_fsmc.c files
 * 
 */
 
@@ -28,9 +27,13 @@
 #define LCD_ADVANCED_FUNCTIONS 0x01
 #define LCD_SUPPORT_FINSH 0x02
 //#define BSP_USING_LCD_DEFAULT_TOUCH
+/* LCD device struct info */
 #define LCD_WIDTH 320
 #define LCD_HEIGHT 480
-
+#define LCD_DIR		0		/* 0: vertical, 1: horizontal */
+#define LCD_WRITE	0X2C	/* Write GRAM*/
+#define LCD_SET_X	0X2A	/* Set x pos cmd */
+#define LCD_SET_Y	0X2B	/* Set y pos cmd */
 
 /****** LCD set up  table ***********/
 
@@ -108,7 +111,7 @@ typedef struct
 #define U2D_R2L         5          
 #define D2U_L2R         6         
 #define D2U_R2L         7          
-#define DFT_SCAN_DIR    L2R_U2D     /* default scan directions */
+#define DFT_SCAN_DIR    L2R_U2D     /* default scan direction */
 
 /* common pan color */
 #define WHITE           0xFFFF     
@@ -140,7 +143,6 @@ void lcd_write_reg(uint16_t regno, uint16_t data);   /* LCD write register value
 void lcd_clear(rt_uint16_t color);	
 
 /***************** LCD transplant functions ********************/
-void lcd_backlight_set(rt_uint8_t pwm);				/* this function needs to be modified if you change backlight IO */		
 void lcd_scan_dir(rt_uint8_t dir);
 void lcd_display_on(void);
 void lcd_display_off(void);

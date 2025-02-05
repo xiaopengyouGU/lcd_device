@@ -4,321 +4,23 @@
 
 rt_uint16_t g_back_color = WHITE;	/* background color */
 rt_uint16_t g_pan_color = RED;		/* pan color */
-/* some inner functions and FSMC init function */
+/* some inner functions and init functions */
 static rt_uint16_t _lcd_rd_data(void);
 static rt_uint32_t _lcd_pow(rt_uint8_t m, rt_uint8_t n);
 static void _lcd_set_cursor(rt_uint16_t x_pos,rt_uint16_t y_pos);
 static void _lcd_write_ram_prepare(void);
 static void MX_FSMC_Init(void);
-
-/********** LCD device struct and hw init *************/
+static void stm32_hw_lcd_init(void);
+/* LCD device struct */
 struct lcd_device _lcd_dev = {
 	LCD_WIDTH,
 	LCD_HEIGHT,
-	0,		/* vertical */
-	0X2C,	/* Write GRAM*/
-	0X2A,	/* Set x pos cmd */
-	0X2B,	/* Set y pos cmd */
+	LCD_DIR,	/* vertical */
+	LCD_WRITE,	/* Write GRAM*/
+	LCD_SET_X,	/* Set x pos cmd */
+	LCD_SET_Y,	/* Set y pos cmd */
 };
 
-void stm32_hw_lcd_init(void)
-{
-/*************************	LCD pin definition	**********************************************/
-	LCD_CS_GPIO_CLK_ENABLE();   /* LCD_CS */
-    LCD_WR_GPIO_CLK_ENABLE();   /* LCD_WR */
-    LCD_RD_GPIO_CLK_ENABLE();   /* LCD_RD */
-    LCD_RS_GPIO_CLK_ENABLE();   /* LCD_RS */
-    LCD_BL_GPIO_CLK_ENABLE();   /* LCD_BL */
-    
-	GPIO_InitTypeDef gpio_init_struct;
-    gpio_init_struct.Pin = LCD_CS_GPIO_PIN;
-    gpio_init_struct.Mode = GPIO_MODE_AF_PP;               
-    gpio_init_struct.Pull = GPIO_PULLUP;                    /* pull up */
-    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;          /* high speed */
-    HAL_GPIO_Init(LCD_CS_GPIO_PORT, &gpio_init_struct);     /* int LCD_CS */
-
-    gpio_init_struct.Pin = LCD_WR_GPIO_PIN;
-    HAL_GPIO_Init(LCD_WR_GPIO_PORT, &gpio_init_struct);     /* init LCD_WR */
-
-    gpio_init_struct.Pin = LCD_RD_GPIO_PIN;
-    HAL_GPIO_Init(LCD_RD_GPIO_PORT, &gpio_init_struct);     /* int LCD_RD */
-
-    gpio_init_struct.Pin = LCD_RS_GPIO_PIN;
-    HAL_GPIO_Init(LCD_RS_GPIO_PORT, &gpio_init_struct);     /* init LCD_RS */
-
-    gpio_init_struct.Pin = LCD_BL_GPIO_PIN;					/* init LCD_BL */
-    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;            
-    HAL_GPIO_Init(LCD_BL_GPIO_PORT, &gpio_init_struct);   
-/*************************	LCD pin definition	**********************************************/
-	
-	MX_FSMC_Init();											/* init FSMC,taken from STM32cubeMX !*/
-	lcd_ex_nt35310_reginit();		/* init the IC */
-	
-	lcd_backlight_set(100);			/* the lightest */
-	lcd_scan_dir(DFT_SCAN_DIR);		/* default scan direction */
-	LCD_BL(1);						/* light lcd */
-	lcd_clear(WHITE);				/* white background */
-	
-}
-
-/********** LCD device struct and hw init *************/
-
-/* functions need to be inplemented! */
-void lcd_init(void)
-{
-	stm32_hw_lcd_init();
-}
-//void lcd_close(void);
-
-#ifdef LCD_BASIC_FUNCTIONS	
-void lcd_draw_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t color)
-{
-	_lcd_set_cursor(x_pos,y_pos);
-	_lcd_write_ram_prepare();
-	LCD->LCD_RAM = color;
-}
-
-void lcd_draw_line(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t x_end,rt_uint16_t y_end,rt_uint16_t color)
-{
-	rt_uint16_t t;
-	int xerr = 0, yerr = 0, delta_x, delta_y, distance;
-	int incx, incy, row, col;
-	delta_x = x_end - x_start;          /* calculate position increment */
-	delta_y = y_end - y_start;
-	row = x_start;
-	col = y_start;
-
-	if (delta_x > 0)incx = 1;   /* set single step direction */
-	else if (delta_x == 0)incx = 0; /* vertical line */
-	else
-	{
-		incx = -1;
-		delta_x = -delta_x;
-	}
-
-	if (delta_y > 0)incy = 1;
-	else if (delta_y == 0)incy = 0; /* horizontal line */
-	else
-	{
-		incy = -1;
-		delta_y = -delta_y;
-	}
-
-	if ( delta_x > delta_y)distance = delta_x;  /* select the base increment axis */
-	else distance = delta_y;
-
-	for (t = 0; t <= distance + 1; t++ )   /* draw line */
-	{
-		lcd_draw_point(row, col, color); /* draw point */
-		xerr += delta_x ;
-		yerr += delta_y ;
-
-		if (xerr > distance)
-		{
-			xerr -= distance;
-			row += incx;
-		}
-
-		if (yerr > distance)
-		{
-			yerr -= distance;
-			col += incy;
-		}
-	}
-}
-
-void lcd_show_num(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color)
-{
-	rt_uint8_t t,tmp;
-	rt_uint8_t end_show = 0,length = 1;
-	rt_uint32_t rec = num;
-	while(rec > 0)
-	{
-		if(rec / 10) length++;
-		rec /= 10;
-	}
-	
-	for(t = 0;t < length;t++)
-	{
-		tmp = (num / _lcd_pow(10, length - t - 1)) % 10;  
-
-		if (end_show == 0 && t < (length - 1))
-		{
-			if (tmp == 0)
-			{
-				lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, ' ',color);/* show space */
-				continue;   /* next */
-			}
-			else
-			{
-				end_show = 1; /* enable show */
-			}
-
-		}
-
-		lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, tmp + '0', color); /* show char */
-	}
-}
-
-void lcd_show_xnum(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color)
-{
-	rt_uint8_t t, temp;
-	rt_uint8_t enshow = 0,len = 1;
-	rt_uint32_t rec = num;
-	
-	while(rec > 0)
-	{
-		if(rec / 16) len++;
-		rec /= 16;
-	}
-
-	for (t = 0; t < len; t++)   /* loop */
-	{
-		temp = (num / _lcd_pow(16, len - t - 1)) % 16;    /* get number */
-
-		if (enshow == 0 && t < (len - 1))   
-		{
-			if (temp == 0)
-			{
-				lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, ' ',color); 			
-				continue;
-			}
-			else
-			{
-				enshow = 1; /* enable show */
-			}
-		}
-
-		lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, temp + '0',color);
-	}
-}
-
-void lcd_show_char(rt_uint16_t x_pos,rt_uint16_t y_pos,char ch,rt_uint16_t color)
-{
-	rt_uint8_t tmp, t1,t;
-	rt_uint8_t csize = (FONT_SIZE/8 + ((FONT_SIZE % 8)? 1:0))*(FONT_SIZE);/* (size/8 + ((size % 8)? 1:0))*(size/2); */
-	rt_uint8_t *pfont;
-	rt_uint16_t y0 = y_pos;
-	
-	ch = ch - ' ';			/* get index */
-	pfont = (rt_uint8_t *)char_font[ch];	/* 16*8 font */
-	
-	for(t = 0; t < csize; t++)
-	{
-		tmp = pfont[t];
-		
-		for(t1 = 0; t1 < 8;t1++)
-		{
-			if(tmp & 0X80) /* effective point,show */
-			{
-				lcd_draw_point(x_pos,y_pos,color);
-			}
-			else
-			{
-				lcd_draw_point(x_pos,y_pos,g_back_color);
-			}
-			
-			tmp <<= 1;
-			y_pos++;
-			
-			if(y_pos >= _lcd_dev.height)return;	/* pos out of range */
-			
-			if((y_pos - y0)==FONT_SIZE)
-			{
-				y_pos = y0;
-				x_pos++;
-				
-				if(x_pos >= _lcd_dev.width)return; /* pos out of range */
-				break;
-			}
-		}
-	}
-	
-}
-
-void lcd_show_string(rt_uint16_t x_pos,rt_uint16_t y_pos,const char* str,rt_uint16_t color)
-{
-	const char *ptr = str;
-	rt_uint8_t i = 0;
-	while((*ptr)!= '\0')
-	{
-		lcd_show_char(x_pos+(FONT_SIZE / 2)*i,y_pos,*ptr,color);
-		ptr++;
-		i++;
-	}
-}
-#endif
-	
-#ifdef LCD_ADVANCED_FUNCTIONS	
-void lcd_color_fill(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color)
-{
-	rt_uint16_t i,j;
-	
-	for(i = 0;i < height ; i++)
-	{
-		_lcd_set_cursor(x_start,y_start+i);
-		_lcd_write_ram_prepare();
-		for(j = 0; j < width;j++)
-		{
-			LCD->LCD_RAM = color;
-		}
-	}
-	
-}
-
-void lcd_draw_ver_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t width,rt_uint16_t color)
-{
-	if(x_pos >= _lcd_dev.width || y_pos >= _lcd_dev.height || width == 0) return;
-	lcd_color_fill(x_pos,y_pos,1,width,color);
-}
-
-void lcd_draw_hor_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color)
-{
-	if(x_pos >= _lcd_dev.width || y_pos >= _lcd_dev.height || length == 0) return;
-	lcd_color_fill(x_pos,y_pos,length,1,color);
-}
-
-void lcd_draw_rect(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color)
-{
-	lcd_draw_line(x_pos,y_pos,x_pos,y_pos+width,color);
-	lcd_draw_line(x_pos,y_pos,x_pos + height,y_pos,color);
-	lcd_draw_line(x_pos,y_pos + width,x_pos + height,y_pos + width,color);
-	lcd_draw_line(x_pos + height,y_pos,x_pos + height,y_pos + width,color);
-}
-
-void lcd_draw_circle(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t radius,rt_uint16_t color)
-{
-	int a, b;
-	int di;
-	a = 0;
-	b = radius;
-	di = 3 - (radius << 1);       /* 判断下个点位置的标志 */
-
-	while (a <= b)
-	{
-		lcd_draw_point(x_pos + a, y_pos - b, color);  /* 5 */
-		lcd_draw_point(x_pos + b, y_pos - a, color);  /* 0 */
-		lcd_draw_point(x_pos + b, y_pos + a, color);  /* 4 */
-		lcd_draw_point(x_pos + a, y_pos + b, color);  /* 6 */
-		lcd_draw_point(x_pos - a, y_pos + b, color);  /* 1 */
-		lcd_draw_point(x_pos - b, y_pos + a, color);
-		lcd_draw_point(x_pos - a, y_pos - b, color);  /* 2 */
-		lcd_draw_point(x_pos - b, y_pos - a, color);  /* 7 */
-		a++;
-
-		/* 使用Bresenham算法画圆 */
-		if (di < 0)
-		{
-			di += 4 * a + 6;
-		}
-		else
-		{
-			di += 10 + 4 * (a - b);
-			b--;
-		}
-	}
-}
-#endif
 /***************** LCD transplant functions ********************/	
 void lcd_read_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t *color)
 {
@@ -466,17 +168,6 @@ void lcd_scan_dir(rt_uint8_t dir)
 		
 }
 
-void lcd_backlight_set(rt_uint8_t pwm)
-{
-	lcd_wr_regno(0xBE);         /* set PWM output, refer to backlight IO*/
-	lcd_wr_data(0x05);          /* 1 set PWM frequency */
-	lcd_wr_data(pwm * 2.55);    /* 2 set PWM duty circle */
-	lcd_wr_data(0x01);          /* 3 set C */
-	lcd_wr_data(0xFF);          /* 4 set D */
-	lcd_wr_data(0x00);          /* 5 setE */
-	lcd_wr_data(0x00);          /* 6 set F */
-}
-
 void lcd_clear(rt_uint16_t color)
 {
 	rt_uint32_t index = 0;
@@ -490,7 +181,7 @@ void lcd_clear(rt_uint16_t color)
 		LCD->LCD_RAM = color;
 	}
 }
-
+/* automatically set draw point place to (x_start, y_start), doesn't matter RGB screen */
 void lcd_set_window(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, rt_uint16_t height)
 {
 	rt_uint16_t twidth, theight;
@@ -505,8 +196,7 @@ void lcd_set_window(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, r
 	lcd_wr_data(y_start >> 8);
 	lcd_wr_data(y_start & 0XFF);
 	lcd_wr_data(theight >> 8);
-	lcd_wr_data(theight & 0XFF);
-	
+	lcd_wr_data(theight & 0XFF);	
 }
 
 /* main part of draw point function*/
@@ -521,46 +211,45 @@ static void _lcd_set_cursor(rt_uint16_t x_pos,rt_uint16_t y_pos)
 }
 /***************** LCD transplant functions ********************/
 
-void lcd_wr_data(volatile uint16_t data)			/* LCD write data */
+/*************************  LCD hw and FSMC init ********************************************/
+static void stm32_hw_lcd_init(void)
 {
-    data = data;           
-    LCD->LCD_RAM = data;
-}
+/*************************	LCD pin definition	**********************************************/
+	LCD_CS_GPIO_CLK_ENABLE();   /* LCD_CS */
+    LCD_WR_GPIO_CLK_ENABLE();   /* LCD_WR */
+    LCD_RD_GPIO_CLK_ENABLE();   /* LCD_RD */
+    LCD_RS_GPIO_CLK_ENABLE();   /* LCD_RS */
+    LCD_BL_GPIO_CLK_ENABLE();   /* LCD_BL */
+    
+	GPIO_InitTypeDef gpio_init_struct;
+    gpio_init_struct.Pin = LCD_CS_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_AF_PP;               
+    gpio_init_struct.Pull = GPIO_PULLUP;                    /* pull up */
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;          /* high speed */
+    HAL_GPIO_Init(LCD_CS_GPIO_PORT, &gpio_init_struct);     /* int LCD_CS */
 
-void lcd_wr_regno(volatile uint16_t regno)			/* LCD write register number or address */
-{
-    regno = regno;         
-    LCD->LCD_REG = regno; 
-}
+    gpio_init_struct.Pin = LCD_WR_GPIO_PIN;
+    HAL_GPIO_Init(LCD_WR_GPIO_PORT, &gpio_init_struct);     /* init LCD_WR */
 
-void lcd_write_reg(uint16_t regno, uint16_t data)   /* LCD write register value */
-{
-    LCD->LCD_REG = regno;  
-    LCD->LCD_RAM = data;   
-}
-/*********** some inner functions *********************/
-rt_uint16_t _lcd_rd_data(void)
-{
-	volatile rt_uint16_t ram;
-	for(rt_uint8_t i = 3; i >= 1;i--);	/*soft delay*/
-	ram = LCD->LCD_RAM;
-	return ram;
-}
+    gpio_init_struct.Pin = LCD_RD_GPIO_PIN;
+    HAL_GPIO_Init(LCD_RD_GPIO_PORT, &gpio_init_struct);     /* int LCD_RD */
 
-static void _lcd_write_ram_prepare(void)
-{
-    LCD->LCD_REG = _lcd_dev.wramcmd;
-}
+    gpio_init_struct.Pin = LCD_RS_GPIO_PIN;
+    HAL_GPIO_Init(LCD_RS_GPIO_PORT, &gpio_init_struct);     /* init LCD_RS */
 
-static rt_uint32_t _lcd_pow(rt_uint8_t m, rt_uint8_t n)
-{
-	rt_uint32_t result = 1;
+    gpio_init_struct.Pin = LCD_BL_GPIO_PIN;					/* init LCD_BL */
+    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;            
+    HAL_GPIO_Init(LCD_BL_GPIO_PORT, &gpio_init_struct);   
+/*************************	LCD pin definition	**********************************************/
 	
-	while(n--)result *= m;
+	MX_FSMC_Init();					/* init FSMC,taken from STM32cubeMX !*/
+	lcd_ex_nt35310_reginit();		/* init the IC */
 	
-	return result;
+	lcd_scan_dir(DFT_SCAN_DIR);		/* default scan direction */
+	LCD_BL(1);						/* light lcd */
+	lcd_clear(WHITE);				/* white background */
+	
 }
-/*********** some inner functions *********************/
 
 /*************************	MX_FSMC_Init  ***************************************************/
 /* FSMC init functions */
@@ -619,6 +308,307 @@ static void MX_FSMC_Init(void)
 }
 /*************************	MX_FSMC_Init  ***************************************************/
 
+/*************************  LCD hw and FSMC init ********************************************/
+
+void lcd_init(void)
+{
+	stm32_hw_lcd_init();
+}
+
+#ifdef LCD_BASIC_FUNCTIONS	
+void lcd_draw_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t color)
+{
+	_lcd_set_cursor(x_pos,y_pos);
+	_lcd_write_ram_prepare();
+	LCD->LCD_RAM = color;
+}
+
+void lcd_draw_line(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t x_end,rt_uint16_t y_end,rt_uint16_t color)
+{
+	rt_uint16_t t;
+	int xerr = 0, yerr = 0, delta_x, delta_y, distance;
+	int incx, incy, row, col;
+	delta_x = x_end - x_start;          /* calculate position increment */
+	delta_y = y_end - y_start;
+	row = x_start;
+	col = y_start;
+
+	if (delta_x > 0)incx = 1;   /* set single step direction */
+	else if (delta_x == 0)incx = 0; /* vertical line */
+	else
+	{
+		incx = -1;
+		delta_x = -delta_x;
+	}
+
+	if (delta_y > 0)incy = 1;
+	else if (delta_y == 0)incy = 0; /* horizontal line */
+	else
+	{
+		incy = -1;
+		delta_y = -delta_y;
+	}
+
+	if ( delta_x > delta_y)distance = delta_x;  /* select the base increment axis */
+	else distance = delta_y;
+
+	for (t = 0; t <= distance + 1; t++ )   /* draw line */
+	{
+		lcd_draw_point(row, col, color); /* draw point */
+		xerr += delta_x ;
+		yerr += delta_y ;
+
+		if (xerr > distance)
+		{
+			xerr -= distance;
+			row += incx;
+		}
+
+		if (yerr > distance)
+		{
+			yerr -= distance;
+			col += incy;
+		}
+	}
+}
+
+void lcd_show_num(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color)
+{
+	rt_uint8_t t,tmp;
+	rt_uint8_t end_show = 0,length = 1;
+	rt_uint32_t rec = num;
+	while(rec > 0)
+	{
+		if(rec / 10) length++;
+		rec /= 10;
+	}
+	
+	for(t = 0;t < length;t++)
+	{
+		tmp = (num / _lcd_pow(10, length - t - 1)) % 10;  
+
+		if (end_show == 0 && t < (length - 1))
+		{
+			if (tmp == 0)
+			{
+				lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, ' ',color);/* show space */
+				continue;   /* next */
+			}
+			else
+			{
+				end_show = 1; /* enable show */
+			}
+
+		}
+
+		lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, tmp + '0', color); /* show char */
+	}
+}
+
+void lcd_show_xnum(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color)
+{
+	rt_uint8_t t, temp;
+	rt_uint8_t enshow = 0,len = 1;
+	rt_uint32_t rec = num;
+	
+	while(rec > 0)
+	{
+		if(rec / 16) len++;
+		rec /= 16;
+	}
+
+	for (t = 0; t < len; t++)   /* loop */
+	{
+		temp = (num / _lcd_pow(16, len - t - 1)) % 16;    /* get number */
+
+		if (enshow == 0 && t < (len - 1))   
+		{
+			if (temp == 0)
+			{
+				lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, ' ',color); 			
+				continue;
+			}
+			else
+			{
+				enshow = 1; /* enable show */
+			}
+		}
+		if((temp <= 9))
+		lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, temp + '0',color);
+		else
+		lcd_show_char(x_pos + (FONT_SIZE / 2)*t, y_pos, (temp - 10) + 'a',color);
+	}
+}
+
+void lcd_show_char(rt_uint16_t x_pos,rt_uint16_t y_pos,char ch,rt_uint16_t color)
+{
+	rt_uint8_t tmp, t1,t;
+	rt_uint8_t csize = (FONT_SIZE/8 + ((FONT_SIZE % 8)? 1:0))*(FONT_SIZE / 2);/* (size/8 + ((size % 8)? 1:0))*(size/2); */
+	rt_uint8_t *pfont;
+	rt_uint16_t y0 = y_pos;
+	
+	ch = ch - ' ';			/* get index */
+	pfont = (rt_uint8_t *)char_font[ch];	/* 16*8 font */
+	
+	for(t = 0; t < csize; t++)
+	{
+		tmp = pfont[t];
+		
+		for(t1 = 0; t1 < 8;t1++)
+		{
+			if(tmp & 0X80) /* effective point,show */
+			{
+				lcd_draw_point(x_pos,y_pos,color);
+			}
+			else
+			{
+				lcd_draw_point(x_pos,y_pos,g_back_color);
+			}
+			
+			tmp <<= 1;
+			y_pos++;
+			
+			if(y_pos >= _lcd_dev.height)return;	/* pos out of range */
+			
+			if((y_pos - y0)==FONT_SIZE)
+			{
+				y_pos = y0;
+				x_pos++;
+				
+				if(x_pos >= _lcd_dev.width)return; /* pos out of range */
+				break;
+			}
+		}
+	}
+	
+}
+
+void lcd_show_string(rt_uint16_t x_pos,rt_uint16_t y_pos,const char* str,rt_uint16_t color)
+{
+	const char *ptr = str;
+	rt_uint8_t i = 0;
+	while((*ptr)!= '\0')
+	{
+		lcd_show_char(x_pos+(FONT_SIZE / 2)*i,y_pos,*ptr,color);
+		ptr++;
+		i++;
+	}
+}
+#endif
+	
+#ifdef LCD_ADVANCED_FUNCTIONS	
+void lcd_color_fill(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color)
+{
+	rt_uint16_t i,j;
+	
+	for(i = 0;i < height ; i++)
+	{
+		_lcd_set_cursor(x_start,y_start+i);
+		_lcd_write_ram_prepare();
+		for(j = 0; j < width;j++)
+		{
+			LCD->LCD_RAM = color;
+		}
+	}
+	
+}
+
+void lcd_draw_ver_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t width,rt_uint16_t color)
+{
+	if(x_pos >= _lcd_dev.width || y_pos >= _lcd_dev.height || width == 0) return;
+	lcd_color_fill(x_pos,y_pos,1,width,color);
+}
+
+void lcd_draw_hor_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color)
+{
+	if(x_pos >= _lcd_dev.width || y_pos >= _lcd_dev.height || length == 0) return;
+	lcd_color_fill(x_pos,y_pos,length,1,color);
+}
+
+void lcd_draw_rect(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color)
+{
+	lcd_draw_line(x_pos,y_pos,x_pos + width,y_pos,color);
+	lcd_draw_line(x_pos + width,y_pos,x_pos + width,y_pos + height,color);
+	lcd_draw_line(x_pos,y_pos,x_pos ,y_pos + height,color);
+	lcd_draw_line(x_pos ,y_pos + height,x_pos + width,y_pos + height,color);
+}
+
+void lcd_draw_circle(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t radius,rt_uint16_t color)
+{
+	int a, b;
+	int di;
+	a = 0;
+	b = radius;
+	di = 3 - (radius << 1);       /* next point */
+
+	while (a <= b)
+	{
+		lcd_draw_point(x_pos + a, y_pos - b, color);  /* 5 */
+		lcd_draw_point(x_pos + b, y_pos - a, color);  /* 0 */
+		lcd_draw_point(x_pos + b, y_pos + a, color);  /* 4 */
+		lcd_draw_point(x_pos + a, y_pos + b, color);  /* 6 */
+		lcd_draw_point(x_pos - a, y_pos + b, color);  /* 1 */
+		lcd_draw_point(x_pos - b, y_pos + a, color);
+		lcd_draw_point(x_pos - a, y_pos - b, color);  /* 2 */
+		lcd_draw_point(x_pos - b, y_pos - a, color);  /* 7 */
+		a++;
+
+		/* use Bresenham Algorithm to draw circle */
+		if (di < 0)
+		{
+			di += 4 * a + 6;
+		}
+		else
+		{
+			di += 10 + 4 * (a - b);
+			b--;
+		}
+	}
+}
+#endif
+
+/*********** some inner functions *********************/
+rt_uint16_t _lcd_rd_data(void)
+{
+	volatile rt_uint16_t ram;
+	for(rt_uint8_t i = 3; i >= 1;i--);	/*soft delay*/
+	ram = LCD->LCD_RAM;
+	return ram;
+}
+
+static void _lcd_write_ram_prepare(void)
+{
+    LCD->LCD_REG = _lcd_dev.wramcmd;
+}
+
+static rt_uint32_t _lcd_pow(rt_uint8_t m, rt_uint8_t n)
+{
+	rt_uint32_t result = 1;
+	
+	while(n--)result *= m;
+	
+	return result;
+}
+/*********** some inner functions *********************/
+
+void lcd_wr_data(volatile uint16_t data)			/* LCD write data */
+{
+    data = data;           
+    LCD->LCD_RAM = data;
+}
+
+void lcd_wr_regno(volatile uint16_t regno)			/* LCD write register number or address */
+{
+    regno = regno;         
+    LCD->LCD_REG = regno; 
+}
+
+void lcd_write_reg(uint16_t regno, uint16_t data)   /* LCD write register value */
+{
+    LCD->LCD_REG = regno;  
+    LCD->LCD_RAM = data;   
+}
+
 /******************************* LCD device supports finsh *************************************/
 /*lcd device supports finsh */
 #ifdef RT_USING_FINSH
@@ -639,7 +629,7 @@ static void lcd(int argc, char **argv)
 				y_pos = atoi(argv[3]);
 				color = atoi(argv[4]);
 				lcd_draw_point(x_pos,y_pos,color);
-				rt_kprintf("lcd draw point in (%d, %d), color: %x \n",x_pos,y_pos,color);
+				rt_kprintf("lcd draw point in (%d, %d), color: %d \n",x_pos,y_pos,color);
 			}
 			else
 			{
@@ -653,7 +643,7 @@ static void lcd(int argc, char **argv)
 				x_pos = atoi(argv[2]);
 				y_pos = atoi(argv[3]);
 				lcd_read_point(x_pos,y_pos,&color);
-				rt_kprintf("lcd read point in (%d, %d), color: %x \n",x_pos,y_pos,color);
+				rt_kprintf("lcd read point in (%d, %d), color: %d \n",x_pos,y_pos,color);
 			}
 			else
 			{
@@ -669,7 +659,7 @@ static void lcd(int argc, char **argv)
 				char ch = *(argv[4]);
 				color = atoi(argv[5]);
 				lcd_show_char(x_pos,y_pos,ch,color);
-				rt_kprintf("lcd show char: %c in (%d, %d), color: %x \n",ch,x_pos,y_pos,color);
+				rt_kprintf("lcd show char: %c in (%d, %d), color: %d \n",ch,x_pos,y_pos,color);
 			}
 			else
 			{
@@ -685,7 +675,7 @@ static void lcd(int argc, char **argv)
 				rt_uint16_t x_end = atoi(argv[4]),y_end = atoi(argv[5]);
 				color = atoi(argv[6]);
 				lcd_draw_line(x_pos,y_pos,x_end,y_end,color);
-				rt_kprintf("lcd draw line from (%d, %d) to (%d, %d), color: %x\n",x_pos,y_pos,x_end,y_end,color);
+				rt_kprintf("lcd draw line from (%d, %d) to (%d, %d), color: %d\n",x_pos,y_pos,x_end,y_end,color);
 			}
 			else
 			{
@@ -694,8 +684,17 @@ static void lcd(int argc, char **argv)
 		}
 		else if(!rt_strcmp(argv[1],"clear"))
 		{
-			rt_kprintf("lcd clear screen\n");
-			lcd_clear(g_back_color);
+			if(argc == 3)
+			{
+				color = atoi(argv[2]);
+				rt_kprintf("lcd clear screen, color: %d\n",color);
+				lcd_clear(color);
+			}
+			else
+			{
+				rt_kprintf("lcd clear screen\n",color);
+				lcd_clear(g_back_color);
+			}
 		}
 		else if(!rt_strcmp(argv[1],"show_num"))
 		{
@@ -706,7 +705,7 @@ static void lcd(int argc, char **argv)
 				rt_uint32_t num = atoi(argv[4]);
 				color = atoi(argv[5]);
 				lcd_show_num(x_pos,y_pos,num,color);
-				rt_kprintf("lcd show num: %d in (%d, %d), color: %x \n",num,x_pos,y_pos,color);
+				rt_kprintf("lcd show num: %d in (%d, %d), color: %d \n",num,x_pos,y_pos,color);
 			}
 			else
 			{
@@ -722,11 +721,11 @@ static void lcd(int argc, char **argv)
 				rt_uint32_t num = atoi(argv[4]);
 				color = atoi(argv[5]);
 				lcd_show_xnum(x_pos,y_pos,num,color);
-				rt_kprintf("lcd show xnum: %d in (%d, %d), color: %x \n",num,x_pos,y_pos,color);
+				rt_kprintf("lcd show xnum: %d in HEX form is %x in (%d, %d), color: %d \n",num,num,x_pos,y_pos,color);
 			}
 			else
 			{
-				rt_kprintf("lcd show xnum:  in (x, y), color:  \n");
+				rt_kprintf("lcd show xnum: num in HEX is hex in (x, y), color:  \n");
 			}
 		}
 		else if(!rt_strcmp(argv[1],"show_string"))
@@ -737,25 +736,11 @@ static void lcd(int argc, char **argv)
 				y_pos = atoi(argv[3]);
 				color = atoi(argv[5]);
 				lcd_show_string(x_pos,y_pos,argv[4],color);
-				rt_kprintf("lcd show string: %s in (%d, %d), color: %x \n",argv[4],x_pos,y_pos,color);
+				rt_kprintf("lcd show string: %s in (%d, %d), color: %d \n",argv[4],x_pos,y_pos,color);
 			}
 			else
 			{
 				rt_kprintf("lcd show string:  in (x, y), color:  \n");
-			}
-		}
-		else if(!rt_strcmp(argv[1],"backlight"))
-		{
-			if(argc == 3)
-			{
-				rt_uint8_t light = atoi(argv[2]);
-				if(light > 100) light = 100;
-				lcd_backlight_set(light);
-				rt_kprintf("lcd set backlight : %d\n",light);
-			}
-			else
-			{
-				rt_kprintf("lcd set backlight : \n");
 			}
 		}
 		else if(!rt_strcmp(argv[1],"draw_rect"))
@@ -767,7 +752,7 @@ static void lcd(int argc, char **argv)
 				rt_uint16_t width = atoi(argv[4]),height = atoi(argv[5]);
 				color = atoi(argv[6]);
 				lcd_draw_rect(x_pos,y_pos,width,height,color);
-				rt_kprintf("lcd draw rect ,start point(%d, %d), width: %d, height: %d, color: %x\n",x_pos,y_pos,width,height,color);
+				rt_kprintf("lcd draw rect ,start point(%d, %d), width: %d, height: %d, color: %d\n",x_pos,y_pos,width,height,color);
 			}
 			else
 			{
@@ -783,7 +768,7 @@ static void lcd(int argc, char **argv)
 				rt_uint16_t radius = atoi(argv[4]);
 				color = atoi(argv[5]);
 				lcd_draw_circle(x_pos,y_pos,radius,color);
-				rt_kprintf("lcd draw circle: center in (%d, %d), radius: %d, color: %x \n",x_pos,y_pos,radius,color);
+				rt_kprintf("lcd draw circle: center in (%d, %d), radius: %d, color: %d \n",x_pos,y_pos,radius,color);
 			}
 			else
 			{
@@ -814,7 +799,7 @@ static void lcd(int argc, char **argv)
 				rt_uint16_t length = atoi(argv[4]);
 				color = atoi(argv[5]);
 				lcd_draw_ver_line(x_pos,y_pos,length,color);
-				rt_kprintf("lcd draw vertical line, start point(%d, %d), length: %d, color: %x \n",x_pos,y_pos,length,color);
+				rt_kprintf("lcd draw vertical line, start point(%d, %d), length: %d, color: %d \n",x_pos,y_pos,length,color);
 			}
 			else
 			{
@@ -830,11 +815,11 @@ static void lcd(int argc, char **argv)
 				rt_uint16_t length = atoi(argv[4]);
 				color = atoi(argv[5]);
 				lcd_draw_hor_line(x_pos,y_pos,length,color);
-				rt_kprintf("lcd draw horizontal line, start point(%d, %d), length: %d, color: %x \n",x_pos,y_pos,length,color);
+				rt_kprintf("lcd draw horizontal line, start point(%d, %d), length: %d, color: %d \n",x_pos,y_pos,length,color);
 			}
 			else
 			{
-				rt_kprintf("lcd draw vertical line, start point(x, y), length: , color:  \n");
+				rt_kprintf("lcd draw horizontal line, start point(x, y), length: , color:  \n");
 			}
 		}
 		else if(!rt_strcmp(argv[1],"fill"))
@@ -845,8 +830,8 @@ static void lcd(int argc, char **argv)
 				y_pos = atoi(argv[3]);
 				rt_uint16_t width = atoi(argv[4]),height = atoi(argv[5]);
 				color = atoi(argv[6]);
-				lcd_draw_rect(x_pos,y_pos,width,height,color);
-				rt_kprintf("lcd color fill ,start point(%d, %d)  width: %d, height: %d, color: %x\n",x_pos,y_pos,width,height,color);
+				lcd_color_fill(x_pos,y_pos,width,height,color);
+				rt_kprintf("lcd color fill ,start point(%d, %d)  width: %d, height: %d, color: %d\n",x_pos,y_pos,width,height,color);
 			}
 			else
 			{
@@ -904,8 +889,7 @@ static void lcd(int argc, char **argv)
 #endif
 					rt_kprintf("lcd on \n");
 					rt_kprintf("lcd off \n");
-					rt_kprintf("lcd backlight light \n");
-					rt_kprintf("lcd clear \n");
+					rt_kprintf("lcd clear (color) \n");
 					rt_kprintf("lcd scan_dir dir \n");
 					rt_kprintf("lcd read_point x y \n");
 					rt_kprintf("lcd set_window x y width height color \n");
@@ -963,11 +947,11 @@ static void lcd(int argc, char **argv)
 	}
 	else
 	{
-		rt_kprintf("This lcd device supports finsh,you can call like this 'lcd help' to get help: \n");
-		rt_kprintf("you must input 'lcd init' to init lcd device before you start this journey!!!\n");
-		rt_kprintf("many functions can be called, see details by inputting 'lcd help func'\n");
-		rt_kprintf("you may be confused with  what 'color' means, see details by inputting ' lcd help color' \n");
-		rt_kprintf("by inputting 'lcd help dir' to see supported directions! \n");
+		rt_kprintf("This lcd device supports finsh,you can call like this 'lcd help' to get help \n");
+		rt_kprintf("You must input 'lcd init' to init lcd device before you start this journey!!!\n");
+		rt_kprintf("Many functions can be called, see details by inputting 'lcd help func'\n");
+		rt_kprintf("You may be confused with  what 'color' means, see details by inputting 'lcd help color' \n");
+		rt_kprintf("By inputting 'lcd help dir' to see supported directions! \n");
 		rt_kprintf("Hope you enjoy it!!! \n\n");
 	}		
 	
