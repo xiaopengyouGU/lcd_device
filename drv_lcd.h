@@ -4,7 +4,6 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <drv_gpio.h>
-#include "dev_lcd.h"
 
 /* 	In this frame, we use STM32 FSMC to control the TFTLCD!!!
 *  	The LCD drive IC type is NT35310 with resolution 320 * 480 
@@ -13,20 +12,18 @@
 * 		2.LCD pin definition
 *		3.LCD transplant functions
 *		4.LCD hw and FSMC init(ignore FSMC if use default set up)
-*		5.drv_lcd_font_ic.h (change IC init function)
+*		5.drv_lcd_font_ic.h (change IC init function, and char_font as you like)
 *	The parts need to be modified are easy to find as you can see,
 *	among which 1,3,4,6 are closed related to LCD drive IC
 *  	The set up of FSMC is finished in STM32cubeMX
 *  	but you must move it to drv_lcd.c if you don't use default set up!!!
-*  	STM32 HAL library is used here but not much, remember add stm32fxxx_hal_sram.c and stm32fxxx_ll_fsmc.c files
+*  	STM32 HAL library is used here but not much, remember to add stm32fxxx_hal_sram.c and stm32fxxx_ll_fsmc.c files
 * 
 */
 
 /****** LCD set up table ***********/
-#define LCD_BASIC_FUNCTIONS 0x00
-#define LCD_ADVANCED_FUNCTIONS 0x01
-#define LCD_SUPPORT_FINSH 0x02
-//#define BSP_USING_LCD_DEFAULT_TOUCH
+#define LCD_SUPPORT_FINSH 			/* support finsh!!! */
+#define FONT_SIZE 16				/* you only need to change this value if using different char_font */
 /* LCD device struct info */
 #define LCD_WIDTH 320
 #define LCD_HEIGHT 480
@@ -37,45 +34,12 @@
 
 /****** LCD set up  table ***********/
 
-#ifdef BSP_USING_LCD_DEFAULT_TOUCH
-#define MOSI_PIN	GET_PIN(F,9)
-#define MISO_PIN	GET_PIN(B,2)
-#define CS_PIN		GET_PIN(F,11)
-#define SCK_PIN		GET_PIN(B,1)
-#endif
-
 /*************************	LCD pin definition	**********************************************/
-/* LCD pin definition  RST/WR/RD/BL/CS/RS */
+/* LCD pin definition, only BL is needed here */
 /* RESET shares place with SYSTEM reset, so you can ignore it  */
-//#define LCD_RST_GPIO_PORT               GPIOx
-//#define LCD_RST_GPIO_PIN                SYS_GPIO_PINx
-//#define LCD_RST_GPIO_CLK_ENABLE()       do{ __HAL_RCC_GPIOx_CLK_ENABLE(); }while(0)   /* Reset */
-
-#define LCD_WR_GPIO_PORT                GPIOD
-#define LCD_WR_GPIO_PIN                 GPIO_PIN_5
-#define LCD_WR_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOD_CLK_ENABLE(); }while(0)   /* Write IO*/
-
-#define LCD_RD_GPIO_PORT                GPIOD
-#define LCD_RD_GPIO_PIN                 GPIO_PIN_4
-#define LCD_RD_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOD_CLK_ENABLE(); }while(0)   /* Read IO */
-
-#define LCD_BL_GPIO_PORT                GPIOB
-#define LCD_BL_GPIO_PIN                 GPIO_PIN_0
-#define LCD_BL_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOB_CLK_ENABLE(); }while(0)   /* backlight IO*/
-
-#define LCD_CS_GPIO_PORT                GPIOG
-#define LCD_CS_GPIO_PIN                 GPIO_PIN_12
-#define LCD_CS_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOG_CLK_ENABLE(); }while(0)
-
-#define LCD_RS_GPIO_PORT                GPIOG
-#define LCD_RS_GPIO_PIN                 GPIO_PIN_0
-#define LCD_RS_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOG_CLK_ENABLE(); }while(0) 
-
-/* LCD backlight control */
-#define LCD_BL(x)   do{ x ? \
-                      HAL_GPIO_WritePin(LCD_BL_GPIO_PORT, LCD_BL_GPIO_PIN, GPIO_PIN_SET) : \
-                      HAL_GPIO_WritePin(LCD_BL_GPIO_PORT, LCD_BL_GPIO_PIN, GPIO_PIN_RESET); \
-                     }while(0)
+//#define RST_PIN		GET_PIN()
+#define LCD_BL_PIN		GET_PIN(B,0)
+#define LCD_BL(x)   rt_pin_write(LCD_BL_PIN,x)	/* LCD backlight control */
 
 #define LCD_FSMC_NEX         4              /* use FSMC_NE4 to connect LCD_CS, range: 1~4 */
 #define LCD_FSMC_AX          10             /* use FSMC_A10 to connect LCD_RS, range: 0 ~ 25 */
@@ -141,7 +105,7 @@ void lcd_wr_regno(volatile uint16_t regno);          /* LCD write register numbe
 void lcd_write_reg(uint16_t regno, uint16_t data);   /* LCD write register value */
 
 void lcd_clear(rt_uint16_t color);	
-
+void lcd_test(void);								/* LCD test function */
 /***************** LCD transplant functions ********************/
 void lcd_scan_dir(rt_uint8_t dir);
 void lcd_display_on(void);
@@ -152,22 +116,27 @@ void lcd_set_window(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, r
 /***************** LCD transplant functions ********************/
 
 /* lcd basic functions */
-#ifdef LCD_BASIC_FUNCTIONS	
-	void lcd_draw_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t color);
-	void lcd_draw_line(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t x_end,rt_uint16_t y_end,rt_uint16_t color);
-	void lcd_show_num(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color);
-	void lcd_show_xnum(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color);
-	void lcd_show_char(rt_uint16_t x_pos,rt_uint16_t y_pos,char ch,rt_uint16_t color);
-	void lcd_show_string(rt_uint16_t x_pos,rt_uint16_t y_pos,const char* str,rt_uint16_t color);
-#endif
+void lcd_draw_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t color);
+void lcd_draw_line(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t x_end,rt_uint16_t y_end,rt_uint16_t color);
+void lcd_show_num(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color);
+void lcd_show_xnum(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint32_t num,rt_uint16_t color);
+void lcd_show_char(rt_uint16_t x_pos,rt_uint16_t y_pos,char ch,rt_uint16_t color);
+void lcd_show_string(rt_uint16_t x_pos,rt_uint16_t y_pos,const char* str,rt_uint16_t color);
 /* lcd advanced functions */	
-#ifdef LCD_ADVANCED_FUNCTIONS
-	void lcd_color_fill(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color);
-	void lcd_draw_ver_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color);
-	void lcd_draw_hor_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color);
-	void lcd_draw_rect(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color);
-	void lcd_draw_circle(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t radius,rt_uint16_t color);
-#endif
+void lcd_color_fill(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color);
+void lcd_draw_ver_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color);
+void lcd_draw_hor_line(rt_uint16_t x_pos,rt_uint16_t y_pos, rt_uint16_t length,rt_uint16_t color);
+void lcd_draw_rect(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color);
+void lcd_draw_circle(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t radius,rt_uint16_t color);
+
+
+/* support IO device frame */
+struct rt_lcd_device
+{
+	struct rt_device parent;
+};
+typedef struct rt_lcd_device* rt_lcd_t;
+
 
 
 #endif

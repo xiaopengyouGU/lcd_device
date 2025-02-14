@@ -2,15 +2,13 @@
 #include "drv_lcd_font_ic.h"
 #include "stdlib.h"
 
-rt_uint16_t g_back_color = WHITE;	/* background color */
-rt_uint16_t g_pan_color = RED;		/* pan color */
 /* some inner functions and init functions */
 static rt_uint16_t _lcd_rd_data(void);
 static rt_uint32_t _lcd_pow(rt_uint8_t m, rt_uint8_t n);
 static void _lcd_set_cursor(rt_uint16_t x_pos,rt_uint16_t y_pos);
 static void _lcd_write_ram_prepare(void);
 static void MX_FSMC_Init(void);
-static void stm32_hw_lcd_init(void);
+static void lcd_hw_init(void);
 /* LCD device struct */
 struct lcd_device _lcd_dev = {
 	LCD_WIDTH,
@@ -168,19 +166,6 @@ void lcd_scan_dir(rt_uint8_t dir)
 		
 }
 
-void lcd_clear(rt_uint16_t color)
-{
-	rt_uint32_t index = 0;
-	rt_uint32_t totalpoint = _lcd_dev.width;
-	totalpoint *= _lcd_dev.height;    /* total points */
-	_lcd_set_cursor(0x00, 0x0000);   /* set cursor */
-	_lcd_write_ram_prepare();        /* prepare to write */
-
-	for (index = 0; index < totalpoint; index++)
-	{
-		LCD->LCD_RAM = color;
-	}
-}
 /* automatically set draw point place to (x_start, y_start), doesn't matter RGB screen */
 void lcd_set_window(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, rt_uint16_t height)
 {
@@ -212,35 +197,9 @@ static void _lcd_set_cursor(rt_uint16_t x_pos,rt_uint16_t y_pos)
 /***************** LCD transplant functions ********************/
 
 /*************************  LCD hw and FSMC init ********************************************/
-static void stm32_hw_lcd_init(void)
+static void lcd_hw_init(void)
 {
-/*************************	LCD pin definition	**********************************************/
-	LCD_CS_GPIO_CLK_ENABLE();   /* LCD_CS */
-    LCD_WR_GPIO_CLK_ENABLE();   /* LCD_WR */
-    LCD_RD_GPIO_CLK_ENABLE();   /* LCD_RD */
-    LCD_RS_GPIO_CLK_ENABLE();   /* LCD_RS */
-    LCD_BL_GPIO_CLK_ENABLE();   /* LCD_BL */
-    
-	GPIO_InitTypeDef gpio_init_struct;
-    gpio_init_struct.Pin = LCD_CS_GPIO_PIN;
-    gpio_init_struct.Mode = GPIO_MODE_AF_PP;               
-    gpio_init_struct.Pull = GPIO_PULLUP;                    /* pull up */
-    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;          /* high speed */
-    HAL_GPIO_Init(LCD_CS_GPIO_PORT, &gpio_init_struct);     /* int LCD_CS */
-
-    gpio_init_struct.Pin = LCD_WR_GPIO_PIN;
-    HAL_GPIO_Init(LCD_WR_GPIO_PORT, &gpio_init_struct);     /* init LCD_WR */
-
-    gpio_init_struct.Pin = LCD_RD_GPIO_PIN;
-    HAL_GPIO_Init(LCD_RD_GPIO_PORT, &gpio_init_struct);     /* int LCD_RD */
-
-    gpio_init_struct.Pin = LCD_RS_GPIO_PIN;
-    HAL_GPIO_Init(LCD_RS_GPIO_PORT, &gpio_init_struct);     /* init LCD_RS */
-
-    gpio_init_struct.Pin = LCD_BL_GPIO_PIN;					/* init LCD_BL */
-    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;            
-    HAL_GPIO_Init(LCD_BL_GPIO_PORT, &gpio_init_struct);   
-/*************************	LCD pin definition	**********************************************/
+	rt_pin_mode(LCD_BL_PIN,PIN_MODE_OUTPUT);	/* init BL pin */
 	
 	MX_FSMC_Init();					/* init FSMC,taken from STM32cubeMX !*/
 	lcd_ex_nt35310_reginit();		/* init the IC */
@@ -254,7 +213,7 @@ static void stm32_hw_lcd_init(void)
 /*************************	MX_FSMC_Init  ***************************************************/
 /* FSMC init functions */
 SRAM_HandleTypeDef hsram1;
-/* FSMC initialization function */
+/* FSMC initialization function, taken from STM32cubeMX generated files */
 static void MX_FSMC_Init(void)
 {
 
@@ -312,10 +271,49 @@ static void MX_FSMC_Init(void)
 
 void lcd_init(void)
 {
-	stm32_hw_lcd_init();
+	lcd_hw_init();
 }
 
-#ifdef LCD_BASIC_FUNCTIONS	
+void lcd_clear(rt_uint16_t color)
+{
+	rt_uint32_t index = 0;
+	rt_uint32_t totalpoint = _lcd_dev.width;
+	totalpoint *= _lcd_dev.height;    /* total points */
+	_lcd_set_cursor(0x00, 0x0000);   /* set cursor */
+	_lcd_write_ram_prepare();        /* prepare to write */
+
+	for (index = 0; index < totalpoint; index++)
+	{
+		LCD->LCD_RAM = color;
+	}
+}
+
+void lcd_test(void)
+{
+	lcd_show_string(50,30,"A LCD Test!!!",RED);
+	lcd_show_num(50,50,1234567890,BLUE);
+	lcd_show_xnum(50,70,123456790,BLUE);
+	lcd_color_fill(30,90,200,120,GREEN);
+	lcd_draw_rect(50,230,100,50,BLACK);
+	lcd_draw_circle(200,350,30,YELLOW);
+	lcd_draw_circle(120,350,30,GREEN);
+	lcd_draw_hor_line(50,400,200,CYAN);
+	lcd_draw_hor_line(270,390,20,GRAYBLUE);
+	lcd_draw_hor_line(200,300,20,LIGHTGREEN);
+	lcd_draw_ver_line(50,400,50,MAGENTA);
+	lcd_draw_ver_line(100,400,50,BROWN);
+	lcd_draw_ver_line(150,400,50,BRRED);
+	lcd_draw_ver_line(200,400,50,GRAY);
+	lcd_draw_ver_line(250,400,50,DARKBLUE);
+	lcd_draw_ver_line(300,400,50,LIGHTBLUE);
+	
+	delay_ms(2000);					/* delay 2000ms */
+	lcd_display_off();
+	delay_ms(2000);					/* delay 2000ms */
+	lcd_display_on();
+}
+
+
 void lcd_draw_point(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t color)
 {
 	_lcd_set_cursor(x_pos,y_pos);
@@ -462,7 +460,7 @@ void lcd_show_char(rt_uint16_t x_pos,rt_uint16_t y_pos,char ch,rt_uint16_t color
 			}
 			else
 			{
-				lcd_draw_point(x_pos,y_pos,g_back_color);
+				lcd_draw_point(x_pos,y_pos,WHITE);
 			}
 			
 			tmp <<= 1;
@@ -494,9 +492,7 @@ void lcd_show_string(rt_uint16_t x_pos,rt_uint16_t y_pos,const char* str,rt_uint
 		i++;
 	}
 }
-#endif
-	
-#ifdef LCD_ADVANCED_FUNCTIONS	
+
 void lcd_color_fill(rt_uint16_t x_start,rt_uint16_t y_start,rt_uint16_t width, rt_uint16_t height,rt_uint16_t color)
 {
 	rt_uint16_t i,j;
@@ -565,7 +561,6 @@ void lcd_draw_circle(rt_uint16_t x_pos,rt_uint16_t y_pos,rt_uint16_t radius,rt_u
 		}
 	}
 }
-#endif
 
 /*********** some inner functions *********************/
 rt_uint16_t _lcd_rd_data(void)
@@ -693,7 +688,7 @@ static void lcd(int argc, char **argv)
 			else
 			{
 				rt_kprintf("lcd clear screen\n",color);
-				lcd_clear(g_back_color);
+				lcd_clear(WHITE);
 			}
 		}
 		else if(!rt_strcmp(argv[1],"show_num"))
@@ -868,7 +863,6 @@ static void lcd(int argc, char **argv)
 				if(!rt_strcmp(argv[2],"func"))
 				{
 					rt_kprintf("lcd device support functions and call formats: \n");
-#ifdef LCD_BASIC_FUNCTIONS			
 					rt_kprintf("*********** basic functions ***********\n");
 					rt_kprintf("lcd draw_point x y color \n");
 					rt_kprintf("lcd draw_line x0 y0 x1 y1 color \n");
@@ -877,8 +871,6 @@ static void lcd(int argc, char **argv)
 					rt_kprintf("lcd show_char x y ch color \n");
 					rt_kprintf("lcd show_string x y str color \n");
 					rt_kprintf("*********** basic functions ***********\n\n");
-#endif
-#ifdef LCD_ADVANCED_FUNCTIONS
 					rt_kprintf("*********** advanced functions ***********\n");
 					rt_kprintf("lcd fill x y width  height color \n");
 					rt_kprintf("lcd draw_rect x y width  height color \n");
@@ -886,13 +878,12 @@ static void lcd(int argc, char **argv)
 					rt_kprintf("lcd draw_vline x y length color \n");
 					rt_kprintf("lcd draw_hline x y length color \n");
 					rt_kprintf("*********** advanced functions ***********\n\n");
-#endif
 					rt_kprintf("lcd on \n");
 					rt_kprintf("lcd off \n");
 					rt_kprintf("lcd clear (color) \n");
 					rt_kprintf("lcd scan_dir dir \n");
 					rt_kprintf("lcd read_point x y \n");
-					rt_kprintf("lcd set_window x y width height color \n");
+					rt_kprintf("lcd set_window x y width height \n");
 					
 				}
 				else if(!rt_strcmp(argv[2],"color"))
@@ -941,14 +932,20 @@ static void lcd(int argc, char **argv)
 		}
 		else if(!rt_strcmp(argv[1],"init"))
 		{
-			stm32_hw_lcd_init();	/* init the device */
+			lcd_init();	/* init the device */
 			rt_kprintf("lcd device is inited successfully!!! \n");
+		}
+		else if(!rt_strcmp(argv[1],"test"))
+		{
+			lcd_test();
+			rt_kprintf("lcd test started successsfully!!! \n");
 		}
 	}
 	else
 	{
 		rt_kprintf("This lcd device supports finsh,you can call like this 'lcd help' to get help \n");
 		rt_kprintf("You must input 'lcd init' to init lcd device before you start this journey!!!\n");
+		rt_kprintf("You can input 'lcd test' to see a test example! \n");
 		rt_kprintf("Many functions can be called, see details by inputting 'lcd help func'\n");
 		rt_kprintf("You may be confused with  what 'color' means, see details by inputting 'lcd help color' \n");
 		rt_kprintf("By inputting 'lcd help dir' to see supported directions! \n");
@@ -960,3 +957,34 @@ MSH_CMD_EXPORT(lcd, lcd functions!);
 #endif
 #endif
 /******************************* LCD device supports finsh *************************************/
+
+/* support IO device frame */
+struct rt_lcd_device _lcd_device;
+static rt_err_t _lcd_open(rt_device_t dev,rt_uint16_t oflag)
+{
+	if(oflag == RT_DEVICE_OFLAG_OPEN)
+	lcd_init();
+	return RT_EOK;
+}
+
+
+static rt_err_t lcd_hw_register(void)
+{
+	rt_err_t result = RT_EOK;
+	_lcd_device.parent.type = RT_Device_Class_Graphic;
+	_lcd_device.parent.rx_indicate = RT_NULL;
+	_lcd_device.parent.rx_indicate = RT_NULL;
+	
+	_lcd_device.parent.init = RT_NULL;
+	_lcd_device.parent.open = _lcd_open;
+	_lcd_device.parent.close = RT_NULL;
+	_lcd_device.parent.read = RT_NULL;
+	_lcd_device.parent.write = RT_NULL;
+	_lcd_device.parent.control = RT_NULL;
+	
+	result = rt_device_register(&_lcd_device.parent,"lcd",RT_DEVICE_FLAG_RDWR);
+	
+	return result;
+}
+
+INIT_COMPONENT_EXPORT(lcd_hw_register);
