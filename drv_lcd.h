@@ -1,10 +1,17 @@
+/*
+ * Change Logs:
+ * Date           Author       Notes
+ * 2025-02-18     Lvtou      the first version
+ */
 #ifndef __DRV_LCD_H__
 #define __DRV_LCD_H__
 	
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <drv_gpio.h>
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* 	In this frame, we use STM32 FSMC to control the TFTLCD!!!
 *  	The LCD drive IC type is NT35310 with resolution 320 * 480 
 *  	However, you can can transplant this frame to your device by modifying just a little:
@@ -22,7 +29,7 @@
 */
 
 /****** LCD set up table ***********/
-#define LCD_SUPPORT_FINSH 			/* support finsh!!! */
+#define LCD_SUPPORT_FINSH 			/* lcd device support finsh!!! */
 #define FONT_SIZE 16				/* you only need to change this value if using different char_font */
 /* LCD device struct info */
 #define LCD_WIDTH 320
@@ -137,6 +144,8 @@ struct rt_lcd_device
 };
 typedef struct rt_lcd_device* rt_lcd_t;
 
-
+#ifdef __cplusplus
+}
+#endif
 
 #endif

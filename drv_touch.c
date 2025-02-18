@@ -1,51 +1,34 @@
+/*
+ * Change Logs:
+ * Date           Author       Notes
+ * 2025-02-18     Lvtou      the first version
+ */
+
 #include "drv_touch.h"
-#include "drv_lcd.h"
 #include "stdlib.h"
-rt_align(RT_ALIGN_SIZE)
 
 /* we support RT_Thread touch frame */
+#ifdef TOUCH_FINISH_ADJUST
+static struct touch_info _touch_info = {
+			X_RATIO_FACTOR,
+			Y_RATIO_FACTOR,
+			X_CENTER,
+			Y_CENTER,
+			0,
+			0,
+			TOUCH_ADJUSTED,
+									};
+#else
 static struct touch_info _touch_info;
-/* inner functions */
+#endif
+/*************  inner functions  *******************/
 static void _write_byte(rt_uint8_t data);
 static rt_uint16_t _read_ad(rt_uint8_t cmd);
+#ifndef TOUCH_FINISH_ADJUST									
 static void _draw_touch_point(rt_uint16_t x, rt_uint16_t y, rt_uint16_t color);
+#endif
 static void _pos_transform(void);		/* this function transform physical position to logical position */
-
-rt_thread_t _read_thread;
-rt_uint8_t _read_flag = 0; 
-static void read_thread_entry(void *parameter)
-{
-	while(1)
-	{
-		if(_read_flag)	/* read pos */
-		{	
-			if(_touch_info.adjusted == TOUCH_ADJUSTED)
-			{	
-				if(!T_IRQ)		/* screen is touched */
-				{
-					touch_read_pos(0);
-					if(_touch_info.x_pos > (LCD_WIDTH - 24) && _touch_info.y_pos < 16)
-					{
-						lcd_clear(WHITE);			/* if touch "RST" , clear the screen */
-						lcd_show_string(LCD_WIDTH - 24, 0, "RST", BLUE); 		  /* show clear screen pos */
-					}
-					else
-					touch_draw_big_point(_touch_info.x_pos,_touch_info.y_pos,TOUCH_COLOR);
-				}	
-			}
-			else
-			{
-				touch_read_pos(1);
-				touch_adjust();
-				_read_flag = 0;			/* change flag */
-				if(_touch_info.adjusted == TOUCH_ADJUSTED)	/* adjusted finish, start polling */
-				_read_flag = 1;		
-			}
-		}
-		rt_thread_mdelay(5);		/* delay 10 ms */
-	}
-}
-
+/*************  inner functions  *******************/
 
 void touch_read_pos(rt_uint8_t mode)	/* 0: logical position, 1: physical position */
 {
@@ -68,7 +51,7 @@ void touch_read_pos(rt_uint8_t mode)	/* 0: logical position, 1: physical positio
 	}
 		
 }
-
+#ifndef TOUCH_FINISH_ADJUST
 /* use 5 point to adjust the touchscreen */
 void touch_adjust(void)
 {
@@ -130,15 +113,33 @@ void touch_adjust(void)
 
 			_touch_info.x_center = _touch_info.x_pos;      /* X axis, physical center pos */
 			_touch_info.y_center = _touch_info.y_pos;      /* Y axis, physical center pos */
-
-			lcd_clear(WHITE);   /* clear screen */
-			lcd_show_string(35, 110,"Touch Screen Adjust OK!", BLUE); /* adjust finish */
 			
 			/* then we close the IRQ and start polling */
 			rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_DISABLE);								
-			rt_thread_mdelay(1000);									  /* delay 1000 ms*/
+			
+			lcd_clear(WHITE);   /* clear screen */
+			lcd_show_string(35, 110,"Touch Screen Adjust OK!", BLUE); /* adjust finish */
+			/* show adjust info */
+			char str[35];
+			lcd_show_string(35,140,"touch adjust info:",RED);
+			int temp0 = (int)_touch_info.x_ratio_factor, temp2;
+			float temp1 = (_touch_info.x_ratio_factor - temp0);
+			temp2 = (int)(temp1*100);
+			rt_sprintf(str,"x_ratio_factor(.00)-> %d, %d",temp0,abs(temp2));
+			lcd_show_string(35,160,str,RED);
+			
+			temp0 = (int)_touch_info.y_ratio_factor;
+			temp1 = (int)(_touch_info.y_ratio_factor - temp0);
+			temp2 = (rt_uint16_t)(temp1*100);
+			rt_sprintf(str,"y_ratio_factor(.00)-> %d, %d",temp0,abs(temp2));
+			lcd_show_string(35,180,str,RED);
+			rt_sprintf(str,"x_center:%d",_touch_info.x_center);
+			lcd_show_string(35,200,str,RED);
+			rt_sprintf(str,"y_center:%d",_touch_info.y_center);
+			lcd_show_string(35,220,str,RED);
+			
+			rt_thread_mdelay(1500);									  /* delay 1000 ms*/
 			lcd_clear(WHITE);/* clear */
-			lcd_show_string(LCD_WIDTH - 24, 0, "RST", BLUE); 		  /* show clear screen pos */
 			return;/* screen */
 		}
 			
@@ -149,8 +150,9 @@ void touch_adjust(void)
 		_touch_info.xy_pos[cnt - 1][1] = _touch_info.y_pos;
 	}
 	_touch_info.adjusted += 1;
-	rt_thread_mdelay(120);		/* here we need a 100 ms delay to debounce! */
+	rt_thread_mdelay(120);		/* here we need a 120 ms delay to debounce! */
 }
+
 
 /**
  * @brief       show adjust info
@@ -172,55 +174,17 @@ void touch_show_adjust_info(rt_uint16_t xy[5][2], double px, double py)
 
     /* show factor in x/y direction */
     lcd_color_fill(40, 160 + (i * 20), LCD_WIDTH - 1, 16, WHITE);  /* clear previous px and py */
-    rt_sprintf(sbuf, "px:%0.2f", px);
+    rt_sprintf(sbuf, "px:0.%d", px*100);
     sbuf[7] = 0; /* add end */
     lcd_show_string(40, 160 + (i * 20), sbuf, RED);
-    rt_sprintf(sbuf, "py:%0.2f", py);
+    rt_sprintf(sbuf, "py:0.%d", py*100);
     sbuf[7] = 0; /* add end */
     lcd_show_string(40 + 80, 160 + (i * 20),sbuf, RED);
 }
+#endif
 
-
-/**
- * @brief       touchscreen init
- */
-void touch_init(void)
-{
-	/* here we use PIN device */
-	rt_pin_mode(MISO_PIN,PIN_MODE_INPUT_PULLUP);
-	rt_pin_mode(CS_PIN,PIN_MODE_OUTPUT);
-	rt_pin_mode(SCK_PIN,PIN_MODE_OUTPUT);
-	rt_pin_mode(MOSI_PIN,PIN_MODE_OUTPUT);
-	/* using IRQ */
-	rt_pin_mode(IRQ_PIN,PIN_MODE_INPUT_PULLUP);
-	rt_pin_attach_irq(IRQ_PIN,PIN_IRQ_MODE_FALLING,touch_irq_handle,RT_NULL);	/* add callback functions */
-	rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_ENABLE);									/* enable interrupt */				
-	
-	_read_thread = rt_thread_create("read_pos",read_thread_entry,RT_NULL,512,5,20);
-	if(_read_thread != RT_NULL)
-	{
-		rt_kprintf("create read thread successfully!\n");
-		rt_thread_startup(_read_thread);
-	}
-}
-
-/* draw a big point */
-void touch_draw_big_point(uint16_t x, uint16_t y, uint16_t color)
-{
-    lcd_draw_point(x, y, color);       /* ÖÐÐÄµã */
-    lcd_draw_point(x + 1, y, color);
-    lcd_draw_point(x, y + 1, color);
-    lcd_draw_point(x + 1, y + 1, color);
-}
-
-
-void touch_irq_handle(void *args)
-{
-	_read_flag = 1;
-}
-
-
-/* software simulates SPI */
+/*************  inner functions *******************/
+/* here we use software to simulate SPI */
 
 /* SPI write a byte data*/
 static void _write_byte(rt_uint8_t data)
@@ -274,7 +238,7 @@ static rt_uint16_t _read_ad(rt_uint8_t cmd)
     T_CS(1);            /* release */
     return num;
 }
-
+#ifndef TOUCH_FINISH_ADJUST
 /* draw a cross for adjusting */
 static void _draw_touch_point(rt_uint16_t x, rt_uint16_t y, rt_uint16_t color)
 {
@@ -286,7 +250,7 @@ static void _draw_touch_point(rt_uint16_t x, rt_uint16_t y, rt_uint16_t color)
     lcd_draw_point(x - 1, y - 1, color);
     lcd_draw_circle(x, y, 6, color);            /* draw center circle */
 }
-
+#endif
 static void _pos_transform(void)
 {
 	/* transform physical position to logical position */
@@ -294,4 +258,177 @@ static void _pos_transform(void)
 	_touch_info.y_pos = (signed short)(_touch_info.y_pos - _touch_info.y_center) / _touch_info.y_ratio_factor + LCD_HEIGHT / 2;
 }
 
-MSH_CMD_EXPORT(touch_init, init touchscreen )
+/*************  inner functions  *******************/
+
+/***********  support RT_Thread touch frame  *************************/
+#ifndef TOUCH_FINISH_ADJUST
+rt_align(RT_ALIGN_SIZE)
+static struct rt_touch_device _touch_device;
+
+static rt_thread_t _adjust_thread;
+static rt_sem_t _adjust_sem; 
+static rt_sem_t _wait_adjust;		/* wait adjusting */
+
+static void adjust_thread_entry(void *parameter)
+{
+	while(1)
+	{
+		rt_sem_take(_adjust_sem,RT_WAITING_FOREVER);	/* wait touching */
+		touch_read_pos(1);								/* read physical pos */
+		touch_adjust();									
+		if(_touch_info.adjusted == TOUCH_ADJUSTED)
+			break;
+		else
+		{
+			rt_thread_mdelay(100);						/* debounce */
+			rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_ENABLE);	/* enable interrupt */
+		}
+	}
+	rt_sem_release(_wait_adjust);
+	rt_sem_delete(_adjust_sem);
+}
+
+
+static void _adjust_callback(void *parameter)
+{
+	rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_DISABLE);		/* avoid repeat triggering interrupt! */
+	rt_sem_release(_adjust_sem);
+}
+
+static void touch_start_adjust(void)				/* start adjust */
+{
+	_adjust_sem = rt_sem_create("adjust",0,RT_IPC_FLAG_PRIO);
+	_wait_adjust = rt_sem_create("wait",0,RT_IPC_FLAG_PRIO);
+	if(_adjust_sem == RT_NULL)
+	{
+		rt_kprintf("create adjust sem failed! \n");
+		return;
+	}
+	if(_wait_adjust == RT_NULL)
+	{
+		rt_kprintf("create wait sem failed! \n");
+		return;
+	}
+	
+	_adjust_thread = rt_thread_create("_adj_t",adjust_thread_entry,RT_NULL,512,9,20);
+	if(_adjust_thread == RT_NULL)
+	{
+		rt_kprintf("create adjust thread failed! \n");
+		return;
+	}
+	/* enable interrupt */
+	rt_pin_mode(IRQ_PIN,PIN_MODE_INPUT_PULLUP);
+	rt_pin_attach_irq(IRQ_PIN,PIN_IRQ_MODE_FALLING,_adjust_callback, RT_NULL);
+	rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_ENABLE);
+	/* start adjust thread*/
+	rt_thread_startup(_adjust_thread);
+}
+
+#endif
+
+static rt_uint8_t _polling_or_int;	/* 1:polling  0: interrupt */
+static rt_uint8_t _int_flag;		/* interrup flag */
+
+static void _irq_callback(void *parameter)		/* irq callback function */
+{
+	rt_touch_t touch = (rt_touch_t)parameter;
+	_int_flag = 1;								/* record interrupt */
+	rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_DISABLE);	/* disable interrupt */
+	rt_hw_touch_isr(touch);
+}
+
+
+static rt_size_t _touch_readpoint(struct rt_touch_device *touch, void*buf,rt_size_t touch_num)
+{
+	if((_polling_or_int && !T_IRQ )|| _int_flag)	/* polling or interrupt */
+	{
+		touch_read_pos(0);							/* read pos */
+		struct rt_touch_data *read_data = (struct rt_touch_data *)buf;
+		read_data->event = RT_TOUCH_EVENT_DOWN;
+		read_data->x_coordinate = _touch_info.x_pos;
+		read_data->y_coordinate = _touch_info.y_pos;
+		read_data->timestamp = rt_touch_get_ts();
+		read_data->width = 1;
+		_int_flag = 0;								/* change flag */
+		return RT_EOK;
+	}
+	
+	return RT_ERROR;
+}
+
+static rt_err_t _touch_control(struct rt_touch_device *touch, int cmd, void*arg)
+{
+	switch(cmd)
+	{
+		case RT_TOUCH_CTRL_ENABLE_INT:
+		{
+			rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_ENABLE);
+			_polling_or_int = 0;
+			break;
+		}
+		case RT_TOUCH_CTRL_DISABLE_INT:
+		{
+			rt_pin_irq_enable(IRQ_PIN,PIN_IRQ_DISABLE);
+			_polling_or_int = 1;
+			break;
+		}
+		case RT_TOUCH_CTRL_GET_INFO:
+		{
+			struct rt_touch_info * info = (struct rt_touch_info *)arg;
+			info->point_num = 1;
+			info->range_x = LCD_WIDTH;
+			info->range_y = LCD_HEIGHT;
+			info->type = RT_TOUCH_TYPE_RESISTANCE;
+			info->vendor = RT_TOUCH_VENDOR_UNKNOWN;
+			break;
+		}
+		case RT_TOUCH_CTRL_GET_ID:
+		{
+			rt_uint16_t *id = (rt_uint16_t *)arg;
+			*id = 2046;
+			break;
+		}			
+		case RT_TOUCH_CTRL_START_ADJUST:
+		{
+#ifndef RT_FINISH_ADJUST
+			touch_start_adjust();
+			rt_sem_take(_wait_adjust,RT_WAITING_FOREVER);
+			rt_sem_delete(_wait_adjust);	
+			break;
+#endif			
+		}
+		default:break;
+	}
+	return RT_EOK;
+}
+
+struct rt_touch_ops _ops = 
+{
+	_touch_readpoint,
+	_touch_control,
+};
+
+static int touch_hw_register(void)
+{
+	/* here we use PIN device */
+	rt_pin_mode(MISO_PIN,PIN_MODE_INPUT_PULLUP);
+	rt_pin_mode(CS_PIN,PIN_MODE_OUTPUT);
+	rt_pin_mode(SCK_PIN,PIN_MODE_OUTPUT);
+	rt_pin_mode(MOSI_PIN,PIN_MODE_OUTPUT);
+	/* using IRQ */
+	rt_pin_mode(IRQ_PIN,PIN_MODE_INPUT_PULLUP);
+	rt_pin_attach_irq(IRQ_PIN,PIN_IRQ_MODE_FALLING,_irq_callback,RT_NULL);	/* add callback functions */
+	
+	_touch_device.irq_handle = RT_NULL;
+	_touch_device.ops = &_ops;
+	_touch_device.config.dev_name = "xpt_2046";
+	_touch_device.info.point_num = 1;
+	_touch_device.info.range_x = LCD_WIDTH;
+	_touch_device.info.range_y = LCD_HEIGHT;
+	_touch_device.info.type = RT_TOUCH_TYPE_RESISTANCE;
+	_touch_device.info.vendor = RT_TOUCH_VENDOR_UNKNOWN;
+	
+	return rt_hw_touch_register(&_touch_device,"touch",RT_DEVICE_FLAG_STANDALONE,RT_NULL);
+}
+INIT_DEVICE_EXPORT(touch_hw_register);
+/***********  support RT_Thread touch frame  *************************/

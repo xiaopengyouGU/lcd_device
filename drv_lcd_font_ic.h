@@ -1,6 +1,14 @@
+/*
+ * Change Logs:
+ * Date           Author       Notes
+ * 2025-02-18     Lvtou      the first version
+ */
 #ifndef __LCDFONT_IC_H
 #define __LCDFONT_IC_H
 #include "drv_lcd.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* There are ASCII char table and IC init functions */
 
 /* 16*16 ASCII char table */
@@ -783,6 +791,9 @@ void lcd_ex_nt35310_reginit(void)
     lcd_wr_regno(0x2c);
 }
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

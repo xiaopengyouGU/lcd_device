@@ -1,3 +1,8 @@
+/*
+ * Change Logs:
+ * Date           Author       Notes
+ * 2025-02-18     Lvtou      the first version
+ */
 #include "drv_lcd.h"
 #include "drv_lcd_font_ic.h"
 #include "stdlib.h"
@@ -987,4 +992,4 @@ static rt_err_t lcd_hw_register(void)
 	return result;
 }
 
-INIT_COMPONENT_EXPORT(lcd_hw_register);
+INIT_DEVICE_EXPORT(lcd_hw_register);

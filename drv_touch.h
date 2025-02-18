@@ -1,12 +1,27 @@
+/*
+ * Change Logs:
+ * Date           Author       Notes
+ * 2025-02-18     Lvtou      the first version
+ */
 #ifndef __DRV_TOUCH_H__
 #define __DRV_TOUCH_H__
 	
 #include "drv_lcd.h"
 #include "drivers/dev_touch.h"
 
-/* Here we support RT_Thread Touch frame! */
-/* We use PIN device to simulate SPI */
-#ifdef BSP_USING_LCD_TOUCH
+#ifdef __cplusplus
+extern "C" {
+#endif
+/*
+ * Here we support RT_Thread Touch frame! 
+ * We use PIN device to simulate SPI
+ * Touchsreen IC is XPT2046, resistive touchscreen IC's control way is similar
+ * This driver is based on drv_lcd files
+ * When you first touch the screen, it will start adjusting
+ * When adjusted successfully, the screen start polling, then you can draw by hand!
+ * 
+ */
+
 #define MOSI_PIN	GET_PIN(F,9)
 #define MISO_PIN	GET_PIN(B,2)
 #define CS_PIN		GET_PIN(F,11)
@@ -18,25 +33,26 @@
 #define T_MISO		rt_pin_read(MISO_PIN)
 #define T_MOSI(x)	rt_pin_write(MOSI_PIN,x)
 #define T_CS(x)		rt_pin_write(CS_PIN,x)
-#endif
 
 /* Here we support vertical screen */
+/* change the content of READ_X and READ_Y if you use horizontal screen */
 #define TOUCH_READ_X	0XD0
 #define TOUCH_READ_Y	0X90
 #define TOUCH_READ_TIMES   3       	/* read times */
 #define TOUCH_ADJUSTED	   0X10	  	/* we ues 5 points adjust! */
-#define TOUCH_UNADJUSTED	0
 #define TOUCH_COLOR			RED
+#define RT_TOUCH_CTRL_START_ADJUST			RT_TOUCH_CTRL_GET_STATUS + 1/* start adjust */
 #define delay_us(x) rt_hw_us_delay(x)
 
-
-
-void touch_init(void);
-void touch_adjust(void);
-void touch_read_pos(rt_uint8_t mode);	/* 0: logical position, 1: physical position */
-void touch_show_adjust_info(rt_uint16_t xy[5][2], double px, double py);	/* px(y) closer to 1,the better */
-void touch_draw_big_point(rt_uint16_t x_pos, rt_uint16_t y_pos, rt_uint16_t color);
-void touch_irq_handle(void *args);		/* interupt callback functions */
+//#define TOUCH_FINISH_ADJUST			
+/* If the touch device is adjusted before, we don't need to adjust it,
+ * we just need to change follow parameters to our first adjust info */
+#ifdef TOUCH_FINISH_ADJUST
+#define X_RATIO_FACTOR	-12.14
+#define Y_RATIO_FACTOR	-7.00
+#define X_CENTER		2072
+#define Y_CENTER		18323
+#endif
 /* touch info struct */
 struct touch_info
 {
@@ -51,4 +67,16 @@ struct touch_info
 	rt_uint8_t 	adjusted;			/* touch screen adjusted */
 	rt_uint16_t xy_pos[5][2];     	/* save info of 5 points adjust */
 };
+
+#ifndef TOUCH_FINISH_ADJUST
+void touch_adjust(void);
+void touch_show_adjust_info(rt_uint16_t xy[5][2], double px, double py);	/* px(y) closer to 1,the better */
+#endif
+void touch_read_pos(rt_uint8_t mode);	/* 0: logical position, 1: physical position */
+void touch_test(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif
