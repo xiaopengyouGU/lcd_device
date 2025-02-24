@@ -1,17 +1,11 @@
 /*
  * Change Logs:
  * Date           Author       Notes
- * 2025-02-18     Lvtou      the first version
+ * 2025-02-24     Lvtou      the first version
  */
 #include "drv_touch.h"
-/* this is a test for touch device */
-rt_align(RT_ALIGN_SIZE)
-static rt_thread_t touch_thread;
-static rt_device_t touch;
-static rt_sem_t xpt_2046_sem;
-struct rt_touch_data read_data;
 
-void draw_big_point(uint16_t x, uint16_t y, uint16_t color)
+void draw_big_point(rt_uint16_t x, rt_uint16_t y, rt_uint16_t color)
 {
     lcd_draw_point(x, y, color);       /* ÖÐÐÄµã */
     lcd_draw_point(x + 1, y, color);
@@ -19,11 +13,28 @@ void draw_big_point(uint16_t x, uint16_t y, uint16_t color)
     lcd_draw_point(x + 1, y + 1, color);
 }
 
+void draw_center_point(rt_uint16_t x, rt_uint16_t y,rt_uint16_t color)
+{
+	lcd_draw_line(x - 12, y, x + 13, y, color); /* horizontal */
+    lcd_draw_line(x, y - 12, x, y + 13, color); /* vertical */
+    lcd_draw_point(x + 1, y + 1, color);
+    lcd_draw_point(x - 1, y + 1, color);
+    lcd_draw_point(x + 1, y - 1, color);
+    lcd_draw_point(x - 1, y - 1, color);
+    lcd_draw_circle(x, y, 6, color);            /* draw center circle */
+}
+/* this is a test for touch device */
+rt_align(RT_ALIGN_SIZE)
+static rt_thread_t touch_thread;
+static rt_device_t touch;
+static rt_sem_t xpt_2046_sem;
+struct rt_touch_data read_data;
+
 static void touch_thread_entry(void *parameter)
 {
 	/* we try to start adjust in this thread */
 	rt_device_control(touch,RT_TOUCH_CTRL_START_ADJUST,RT_NULL);
-	
+	rt_device_control(touch,RT_TOUCH_CTRL_ENABLE_INT,RT_NULL);
 	rt_uint8_t i;
 	rt_uint16_t x_pos,y_pos;
 	rt_err_t result;
@@ -32,23 +43,20 @@ static void touch_thread_entry(void *parameter)
 	{
 		rt_sem_take(xpt_2046_sem,RT_WAITING_FOREVER);
 		rt_device_read(touch,0,&read_data,sizeof(read_data));
-		if(read_data.event == RT_TOUCH_EVENT_DOWN)
-		{
-			rt_kprintf("%d %d %d %d %d\n",
+		
+		rt_kprintf("%d %d %d %d \n",
                       i,
                       read_data.x_coordinate,
                       read_data.y_coordinate,
-                      read_data.timestamp,
-                      read_data.width);
-			draw_big_point(read_data.x_coordinate,read_data.y_coordinate,TOUCH_COLOR);
-			rt_device_control(touch,RT_TOUCH_CTRL_ENABLE_INT,RT_NULL);/* enable interrupt */
-		}
-		rt_thread_mdelay(10);
+                      read_data.timestamp);
+		draw_center_point(read_data.x_coordinate,read_data.y_coordinate,BLUE);
+		rt_thread_mdelay(200);
+		rt_device_control(touch,RT_TOUCH_CTRL_ENABLE_INT,RT_NULL);/* enable interrupt */
 	}
 	
 	/* we start polling and hand write */
 	rt_device_control(touch,RT_TOUCH_CTRL_DISABLE_INT,RT_NULL);	
-	lcd_show_string(30,100,"start hand write!!!\n",TOUCH_COLOR);
+	lcd_show_string(30,100,"start hand write!!!",TOUCH_COLOR);
 	rt_thread_mdelay(1000);
 	lcd_clear(WHITE);
 	lcd_show_string(LCD_WIDTH - 24, 0, "RST", BLUE); 		  /* show clear screen pos */
@@ -56,7 +64,7 @@ static void touch_thread_entry(void *parameter)
 	while(1)
 	{
 		result = rt_device_read(touch,0,&read_data,sizeof(read_data));
-		if(result == RT_EOK)
+		if(result == 1)
 		{
 			x_pos = read_data.x_coordinate;
 			y_pos = read_data.y_coordinate;
@@ -67,10 +75,12 @@ static void touch_thread_entry(void *parameter)
 			}
 			else
 			{
-				draw_big_point(read_data.x_coordinate,read_data.y_coordinate,TOUCH_COLOR);	/* support hand write */
+				draw_big_point(x_pos,y_pos,TOUCH_COLOR);	/* support hand write */
 			}
 		}
-		rt_thread_mdelay(10);
+		
+		rt_thread_mdelay(5);
+		
 	}
 	
 }
@@ -84,17 +94,17 @@ static rt_err_t rx_callback(rt_device_t dev, rt_size_t size)
 
 void touch_test(void)
 {
-	touch = rt_device_find("touch");
-	rt_device_open(touch,RT_DEVICE_FLAG_INT_RX);				/* open touch device */	
-	
+	touch = rt_device_find("touch");	
 	if(touch == RT_NULL)
 	{
 		rt_kprintf("find touch device failed!\n");
 		return;
 	}
+	lcd_init();										/* init lcd */			
+	rt_device_open(touch,RT_DEVICE_FLAG_INT_RX);	/* open touch device */
 	rt_device_set_rx_indicate(touch,rx_callback);	/* set callback function */
 	
-	xpt_2046_sem = rt_sem_create("_2046",0,RT_IPC_FLAG_PRIO);
+	xpt_2046_sem = rt_sem_create("X_2046",0,RT_IPC_FLAG_PRIO);
 	if(xpt_2046_sem == RT_NULL)
 	{
 		rt_kprintf("create xpt_2046_sem failed!\n");
