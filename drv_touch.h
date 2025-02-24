@@ -45,7 +45,7 @@ extern "C" {
 #define delay_us(x) rt_hw_us_delay(x)
 
 #define TOUCH_SUPPORT_FRAME			/* for some abstract reason, Touch frame can't operate as being expected, so define this macro */
-#define TOUCH_FINISH_ADJUST			/* if you don't adjust the lcd device, define this macro */
+//#define TOUCH_FINISH_ADJUST			/* if you don't adjust the lcd device, define this macro */
 /* If the touch device is adjusted before, we don't need to adjust it,
  * we just need to change follow parameters to our first adjust info */
 #ifdef TOUCH_FINISH_ADJUST 
